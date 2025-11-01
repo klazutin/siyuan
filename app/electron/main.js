@@ -325,6 +325,7 @@ const initMainWindow = () => {
         fullscreenable: true,
         fullscreen: windowState.fullscreen,
         trafficLightPosition: {x: 8, y: 8},
+        spellcheck: true,
         webPreferences: {
             nodeIntegration: true,
             webviewTag: true,
@@ -337,6 +338,31 @@ const initMainWindow = () => {
         icon: path.join(appDir, "stage", "icon-large.png"),
     });
     remote.enable(currentWindow.webContents);
+
+
+    currentWindow.webContents.on('context-menu', (event, params) => {
+        console.log('context');
+        const menu = new Menu()
+
+        // Add each spelling suggestion
+        for (const suggestion of params.dictionarySuggestions) {
+            menu.append(new MenuItem({
+            label: suggestion,
+            click: () => currentWindow.webContents.replaceMisspelling(suggestion)
+            }))
+        }
+
+        // Allow users to add the misspelled word to the dictionary
+        if (params.misspelledWord) {
+            menu.append(
+            new MenuItem({
+                label: 'Add to dictionary',
+                click: () => currentWindow.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord)
+            })
+            )
+        }
+        menu.popup()
+    })    
 
     if (resetToCenter) {
         currentWindow.center();
@@ -406,6 +432,30 @@ const initMainWindow = () => {
     if (windowState.isDevToolsOpened) {
         currentWindow.webContents.openDevTools({mode: "bottom"});
     }
+
+    currentWindow.on("context-menu", (event, params) => {
+            console.log('hello!');
+            const mmenu = new Menu();
+
+            // Add each spelling suggestion
+            for (const suggestion of params.dictionarySuggestions) {
+                mmenu.append(new MenuItem({
+                label: suggestion,
+                click: () => currentWindow.webContents.replaceMisspelling(suggestion)
+                }));
+            }
+
+            // Allow users to add the misspelled word to the dictionary
+            if (params.misspelledWord) {
+                mmenu.append(
+                new MenuItem({
+                    label: "Add to dictionary",
+                    click: () => currentWindow.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord)
+                })
+                );
+            }
+
+            mmenu.popup();    
 
     // 主界面事件监听
     currentWindow.once("ready-to-show", () => {
@@ -864,6 +914,7 @@ app.whenReady().then(() => {
         });
         currentWindow.on("leave-full-screen", () => {
             event.sender.send("siyuan-event", "leave-full-screen");
+        });
         });
     });
     ipcMain.on("siyuan-cmd", (event, data) => {
