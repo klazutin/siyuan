@@ -462,6 +462,7 @@ export const fixTable = (protyle: IProtyle, event: KeyboardEvent, range: Range) 
                 range.selectNodeContents(nextElement);
             } else {
                 insertRow(protyle, range, cellElement, nodeElement);
+                focusByRange(range);
                 range.selectNodeContents(nodeElement.querySelector("tbody").lastElementChild.firstElementChild);
             }
             event.preventDefault();
