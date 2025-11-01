@@ -766,7 +766,8 @@ func ExportMarkdownHTML(id, savePath string, docx, merge bool) (name, dom string
 	if 1 == Conf.Appearance.Mode {
 		theme = Conf.Appearance.ThemeDark
 	}
-	srcs = []string{"icons", "themes/" + theme}
+	// 复制主题文件夹
+	srcs = []string{"themes/" + theme}
 	appearancePath := util.AppearancePath
 	if util.IsSymlinkPath(util.AppearancePath) {
 		// Support for symlinked theme folder when exporting HTML https://github.com/siyuan-note/siyuan/issues/9173
@@ -784,6 +785,35 @@ func ExportMarkdownHTML(id, savePath string, docx, merge bool) (name, dom string
 		if err := filelock.Copy(from, to); err != nil {
 			logging.LogErrorf("copy appearance from [%s] to [%s] failed: %s", from, savePath, err)
 			return
+		}
+	}
+
+	// 只复制图标文件夹中的 icon.js 文件
+	iconName := Conf.Appearance.Icon
+	// 如果使用的不是内建图标（ant 或 material），需要复制 material 作为后备
+	if iconName != "ant" && iconName != "material" && iconName != "" {
+		srcIconFile := filepath.Join(appearancePath, "icons", "material", "icon.js")
+		toIconDir := filepath.Join(savePath, "appearance", "icons", "material")
+		if err := os.MkdirAll(toIconDir, 0755); err != nil {
+			logging.LogErrorf("mkdir [%s] failed: %s", toIconDir, err)
+			return
+		}
+		toIconFile := filepath.Join(toIconDir, "icon.js")
+		if err := filelock.Copy(srcIconFile, toIconFile); err != nil {
+			logging.LogWarnf("copy icon file from [%s] to [%s] failed: %s", srcIconFile, toIconFile, err)
+		}
+	}
+	// 复制当前使用的图标文件
+	if iconName != "" {
+		srcIconFile := filepath.Join(appearancePath, "icons", iconName, "icon.js")
+		toIconDir := filepath.Join(savePath, "appearance", "icons", iconName)
+		if err := os.MkdirAll(toIconDir, 0755); err != nil {
+			logging.LogErrorf("mkdir [%s] failed: %s", toIconDir, err)
+			return
+		}
+		toIconFile := filepath.Join(toIconDir, "icon.js")
+		if err := filelock.Copy(srcIconFile, toIconFile); err != nil {
+			logging.LogWarnf("copy icon file from [%s] to [%s] failed: %s", srcIconFile, toIconFile, err)
 		}
 	}
 
@@ -930,7 +960,8 @@ func ExportHTML(id, savePath string, pdf, image, keepFold, merge bool) (name, do
 		if 1 == Conf.Appearance.Mode {
 			theme = Conf.Appearance.ThemeDark
 		}
-		srcs = []string{"icons", "themes/" + theme}
+		// 复制主题文件夹
+		srcs = []string{"themes/" + theme}
 		appearancePath := util.AppearancePath
 		if util.IsSymlinkPath(util.AppearancePath) {
 			// Support for symlinked theme folder when exporting HTML https://github.com/siyuan-note/siyuan/issues/9173
@@ -946,6 +977,35 @@ func ExportHTML(id, savePath string, pdf, image, keepFold, merge bool) (name, do
 			to := filepath.Join(savePath, "appearance", src)
 			if err := filelock.Copy(from, to); err != nil {
 				logging.LogErrorf("copy appearance from [%s] to [%s] failed: %s", from, savePath, err)
+			}
+		}
+
+		// 只复制图标文件夹中的 icon.js 文件
+		iconName := Conf.Appearance.Icon
+		// 如果使用的不是内建图标（ant 或 material），需要复制 material 作为后备
+		if iconName != "ant" && iconName != "material" && iconName != "" {
+			srcIconFile := filepath.Join(appearancePath, "icons", "material", "icon.js")
+			toIconDir := filepath.Join(savePath, "appearance", "icons", "material")
+			if err := os.MkdirAll(toIconDir, 0755); err != nil {
+				logging.LogErrorf("mkdir [%s] failed: %s", toIconDir, err)
+				return
+			}
+			toIconFile := filepath.Join(toIconDir, "icon.js")
+			if err := filelock.Copy(srcIconFile, toIconFile); err != nil {
+				logging.LogWarnf("copy icon file from [%s] to [%s] failed: %s", srcIconFile, toIconFile, err)
+			}
+		}
+		// 复制当前使用的图标文件
+		if iconName != "" {
+			srcIconFile := filepath.Join(appearancePath, "icons", iconName, "icon.js")
+			toIconDir := filepath.Join(savePath, "appearance", "icons", iconName)
+			if err := os.MkdirAll(toIconDir, 0755); err != nil {
+				logging.LogErrorf("mkdir [%s] failed: %s", toIconDir, err)
+				return
+			}
+			toIconFile := filepath.Join(toIconDir, "icon.js")
+			if err := filelock.Copy(srcIconFile, toIconFile); err != nil {
+				logging.LogWarnf("copy icon file from [%s] to [%s] failed: %s", srcIconFile, toIconFile, err)
 			}
 		}
 
@@ -1008,35 +1068,30 @@ func prepareExportTree(bt *treenode.BlockTree) (ret *parse.Tree) {
 
 func processIFrame(tree *parse.Tree) {
 	// 导出 PDF/Word 时 IFrame 块使用超链接 https://github.com/siyuan-note/siyuan/issues/4035
-	var unlinks []*ast.Node
 	ast.Walk(tree.Root, func(n *ast.Node, entering bool) ast.WalkStatus {
-		if !entering {
+		if !entering || ast.NodeIFrame != n.Type {
 			return ast.WalkContinue
 		}
-		if ast.NodeIFrame == n.Type {
-			index := bytes.Index(n.Tokens, []byte("src=\""))
-			if 0 > index {
-				n.InsertBefore(&ast.Node{Type: ast.NodeText, Tokens: n.Tokens})
-			} else {
-				src := n.Tokens[index+len("src=\""):]
-				src = src[:bytes.Index(src, []byte("\""))]
-				src = html.UnescapeHTML(src)
-				link := &ast.Node{Type: ast.NodeLink}
-				link.AppendChild(&ast.Node{Type: ast.NodeOpenBracket})
-				link.AppendChild(&ast.Node{Type: ast.NodeText, Tokens: src})
-				link.AppendChild(&ast.Node{Type: ast.NodeCloseBracket})
-				link.AppendChild(&ast.Node{Type: ast.NodeOpenParen})
-				link.AppendChild(&ast.Node{Type: ast.NodeLinkDest, Tokens: src})
-				link.AppendChild(&ast.Node{Type: ast.NodeCloseParen})
-				n.InsertBefore(link)
-			}
-			unlinks = append(unlinks, n)
+
+		n.Type = ast.NodeParagraph
+		index := bytes.Index(n.Tokens, []byte("src=\""))
+		if 0 > index {
+			n.AppendChild(&ast.Node{Type: ast.NodeText, Tokens: n.Tokens})
+		} else {
+			src := n.Tokens[index+len("src=\""):]
+			src = src[:bytes.Index(src, []byte("\""))]
+			src = html.UnescapeHTML(src)
+			link := &ast.Node{Type: ast.NodeLink}
+			link.AppendChild(&ast.Node{Type: ast.NodeOpenBracket})
+			link.AppendChild(&ast.Node{Type: ast.NodeText, Tokens: src})
+			link.AppendChild(&ast.Node{Type: ast.NodeCloseBracket})
+			link.AppendChild(&ast.Node{Type: ast.NodeOpenParen})
+			link.AppendChild(&ast.Node{Type: ast.NodeLinkDest, Tokens: src})
+			link.AppendChild(&ast.Node{Type: ast.NodeCloseParen})
+			n.AppendChild(link)
 		}
 		return ast.WalkContinue
 	})
-	for _, n := range unlinks {
-		n.Unlink()
-	}
 }
 
 func ProcessPDF(id, p string, merge, removeAssets, watermark bool) (err error) {
@@ -1107,10 +1162,6 @@ func processPDFWatermark(pdfCtx *model.Context, watermark bool) {
 
 	str := Conf.Export.PDFWatermarkStr
 	if "" == str {
-		return
-	}
-
-	if !IsPaidUser() {
 		return
 	}
 
@@ -2039,15 +2090,18 @@ func exportMarkdownContent(id, ext string, exportRefMode int, defBlockIDs []stri
 		return
 	}
 
-	for c := tree.Root.FirstChild; nil != c; c = c.Next {
-		if ast.NodeParagraph == c.Type {
-			isEmpty = nil == c.FirstChild
-			if !isEmpty {
+	refCount := sql.QueryRootChildrenRefCount(tree.ID)
+	if !Conf.Export.MarkdownYFM && treenode.ContainOnlyDefaultIAL(tree) && 1 > len(refCount) {
+		for c := tree.Root.FirstChild; nil != c; c = c.Next {
+			if ast.NodeParagraph == c.Type {
+				isEmpty = nil == c.FirstChild
+				if !isEmpty {
+					break
+				}
+			} else {
+				isEmpty = false
 				break
 			}
-		} else {
-			isEmpty = false
-			break
 		}
 	}
 
@@ -2110,6 +2164,7 @@ func exportMarkdownContent0(id string, tree *parse.Tree, cloudAssetsBase string,
 	}
 
 	currentDocDir := path.Dir(tree.HPath)
+	currentDocDir = util.FilterFilePath(currentDocDir)
 
 	var unlinks []*ast.Node
 	ast.Walk(tree.Root, func(n *ast.Node, entering bool) ast.WalkStatus {
@@ -2163,9 +2218,19 @@ func exportMarkdownContent0(id string, tree *parse.Tree, cloudAssetsBase string,
 							href = "#" + defID
 						}
 					}
-					href = strings.TrimPrefix(href, currentDocDir)
+
+					sameDir := path.Dir(href) == currentDocDir
 					href = util.FilterFilePath(href)
-					href = strings.TrimPrefix(href, "/")
+					if !sameDir {
+						var relErr error
+						href, relErr = filepath.Rel(currentDocDir, href)
+						if nil != relErr {
+							logging.LogWarnf("get relative path from [%s] to [%s] failed: %s", currentDocDir, href, relErr)
+						}
+						href = filepath.ToSlash(href)
+					} else {
+						href = strings.TrimPrefix(href, currentDocDir+"/")
+					}
 					blockRefLink := &ast.Node{Type: ast.NodeTextMark, TextMarkType: "a", TextMarkTextContent: linkText, TextMarkAHref: href}
 					blockRefLink.KramdownIAL = n.KramdownIAL
 					n.InsertBefore(blockRefLink)
@@ -2283,36 +2348,20 @@ func exportTree(tree *parse.Tree, wysiwyg, keepFold, avHiddenCol bool,
 		case 2: // 锚文本块链
 			blockRefLink := &ast.Node{Type: ast.NodeTextMark, TextMarkTextContent: linkText, TextMarkAHref: "siyuan://blocks/" + defID}
 			blockRefLink.KramdownIAL = n.KramdownIAL
-			// 除了块引还有其他元素 https://github.com/siyuan-note/siyuan/issues/15698
-			blockRefLink.TextMarkType = strings.TrimSpace(strings.ReplaceAll(n.TextMarkType, "block-ref", "a"))
+			blockRefLink.TextMarkType = "a " + n.TextMarkType
 			blockRefLink.TextMarkInlineMemoContent = n.TextMarkInlineMemoContent
 			n.InsertBefore(blockRefLink)
 			unlinks = append(unlinks, n)
 		case 3: // 仅锚文本
-			var blockRefLink *ast.Node
-			if 0 < len(n.KramdownIAL) {
-				blockRefLink = &ast.Node{Type: ast.NodeTextMark, TextMarkType: "text", TextMarkTextContent: linkText}
-				blockRefLink.KramdownIAL = n.KramdownIAL
-
-				if n.IsTextMarkType("inline-memo") {
-					blockRefLink.TextMarkInlineMemoContent = n.TextMarkInlineMemoContent
-					blockRefLink.TextMarkType = "text inline-memo"
-				}
-			} else {
-				blockRefLink = &ast.Node{Type: ast.NodeText, Tokens: []byte(linkText)}
-				if "block-ref" != n.TextMarkType {
-					blockRefLink.Type = ast.NodeTextMark
-					blockRefLink.TextMarkType = strings.TrimSpace(strings.ReplaceAll(n.TextMarkType, "block-ref", ""))
-					blockRefLink.TextMarkTextContent = linkText
-					blockRefLink.TextMarkInlineMemoContent = n.TextMarkInlineMemoContent
-				}
-			}
+			blockRefLink := &ast.Node{Type: ast.NodeTextMark, TextMarkType: strings.TrimSpace(strings.ReplaceAll(n.TextMarkType, "block-ref", "")), TextMarkTextContent: linkText}
+			blockRefLink.KramdownIAL = n.KramdownIAL
+			blockRefLink.TextMarkInlineMemoContent = n.TextMarkInlineMemoContent
 			n.InsertBefore(blockRefLink)
 			unlinks = append(unlinks, n)
 		case 4: // 脚注+锚点哈希
 			if currentTreeNodeIDs[defID] {
 				// 当前文档内不转换脚注，直接使用锚点哈希 https://github.com/siyuan-note/siyuan/issues/13283
-				n.TextMarkType = strings.ReplaceAll(n.TextMarkType, "block-ref", "a")
+				n.TextMarkType = "a " + n.TextMarkType
 				n.TextMarkTextContent = linkText
 				n.TextMarkAHref = "#" + defID
 				return ast.WalkContinue
@@ -2333,11 +2382,6 @@ func exportTree(tree *parse.Tree, wysiwyg, keepFold, avHiddenCol bool,
 			n.InsertBefore(text)
 			n.InsertBefore(&ast.Node{Type: ast.NodeFootnotesRef, Tokens: []byte("^" + refFoot.refNum), FootnotesRefId: refFoot.refNum, FootnotesRefLabel: []byte("^" + refFoot.refNum)})
 			unlinks = append(unlinks, n)
-		}
-
-		if nil != n.Next && ast.NodeKramdownSpanIAL == n.Next.Type {
-			// 引用加排版标记（比如颜色）重叠时丢弃后面的排版属性节点
-			unlinks = append(unlinks, n.Next)
 		}
 		return ast.WalkSkipChildren
 	})
@@ -3005,7 +3049,7 @@ func blockLink2Ref0(currentTree *parse.Tree, node *ast.Node, treeCache map[strin
 		}
 
 		if treenode.IsBlockLink(n) {
-			n.TextMarkType = "block-ref"
+			n.TextMarkType = strings.TrimSpace(strings.TrimPrefix(n.TextMarkType, "a") + " block-ref")
 			n.TextMarkBlockRefID = strings.TrimPrefix(n.TextMarkAHref, "siyuan://blocks/")
 			n.TextMarkBlockRefSubtype = "s"
 

@@ -1395,7 +1395,7 @@ export const openMenuPanel = (options: {
                     break;
                 } else if (type === "clearDate") {
                     const colData = fields.find((item: IAVColumn) => {
-                        if (item.id === options.cellElements[0].getAttribute("data-col-id")) {
+                        if (item.id === getColId(options.cellElements[0], data.viewType)) {
                             return true;
                         }
                     });
@@ -1427,6 +1427,11 @@ export const openMenuPanel = (options: {
                             blockID,
                             id: target.parentElement.dataset.id,
                             avID
+                        }], [{
+                            action: "setAttrViewBlockView",
+                            blockID,
+                            id: options.blockElement.querySelector(".av__views .item--focus").getAttribute("data-id"),
+                            avID
                         }]);
                     }
                     event.preventDefault();
@@ -1446,6 +1451,11 @@ export const openMenuPanel = (options: {
                             action: "setAttrViewBlockView",
                             blockID,
                             id: target.parentElement.dataset.id,
+                            avID,
+                        }], [{
+                            action: "setAttrViewBlockView",
+                            blockID,
+                            id: options.blockElement.querySelector(".av__views .item--focus").getAttribute("data-id"),
                             avID,
                         }]);
                         window.siyuan.menus.menu.remove();
